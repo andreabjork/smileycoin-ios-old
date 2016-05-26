@@ -503,7 +503,7 @@ seed:(NSData *(^)())seed
     if (transaction.lockTime <= blockHeight + 1) return NO;
 
     if (transaction.lockTime >= TX_MAX_LOCK_HEIGHT &&
-        transaction.lockTime < [NSDate timeIntervalSinceReferenceDate] + NSTimeIntervalSince1970 + 1*60) return NO;
+        transaction.lockTime < [NSDate timeIntervalSinceReferenceDate] + NSTimeIntervalSince1970 + 3*60) return NO;
 
     for (NSNumber *sequence in transaction.inputSequences) { // lockTime is ignored if all sequence numbers are final
         if (sequence.unsignedIntValue < UINT32_MAX) return YES;

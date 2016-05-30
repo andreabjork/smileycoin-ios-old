@@ -31,14 +31,14 @@
 #import <openssl/bn.h>
 
 #define MAX_TIME_DRIFT        (2*60*60)     // the furthest in the future a block is allowed to be timestamped
-#define MAX_PROOF_OF_WORK      0x1e0fffff   // highest value for difficulty target (higher values are less difficult)
+#define MAX_PROOF_OF_WORK      0x1e0fffff  // highest value for difficulty target (higher values are less difficult)
 #define TARGET_TIMESPAN       (5*24*60*60)     // the targeted timespan between difficulty target adjustments
-#define TARGET_TIMESPAN_NEW   3*60*60            // the new targeted timespan between difficulty target adjustments
-#define TARGET_SPACING        3*60
+#define TARGET_TIMESPAN_NEW   (3*60*60)            // the new targeted timespan between difficulty target adjustments
+#define TARGET_SPACING        (3*60)
 #define DIFF_CHANGE_TARGET    97050
 
 
-#define BLOCK_VERSION_AUXPOW_AUXBLOCK 0x00620102
+#define BLOCK_VERSION_AUXPOW_AUXBLOCK 0x1e0fffff
 
 // convert difficulty target format to bignum, as per: https://github.com/bitcoin/bitcoin/blob/master/src/uint256.h#L323
 static void setCompact(BIGNUM *bn, uint32_t compact)
@@ -341,30 +341,25 @@ parentBlock:(NSData*)parentBlock
 
     if (cursor == nil) return YES; // hit checkpoint
 
-    int32_t nModulatedTimespan = (int32_t)((int64_t)previous.timestamp - (int64_t)cursor.timestamp);
-
+    int32_t nModulatedTimespan = (int32_t)((int64_t)self.timestamp - (int64_t)time);//(int32_t)((int64_t)previous.timestamp - (int64_t)cursor.timestamp);
+    NSLog(@"Cursor of height %d has timestamp %f ", cursor.height, cursor.timestamp);
+    //int32_t timespan = 5*24*60*60;
+    //if (nModulatedTimespan < timespan/4) nModulatedTimespan = timespan/4;
+    //if (nModulatedTimespan > timespan*4) nModulatedTimespan = timespan*4;
     if (newDifficultyProtocol) {
-        nModulatedTimespan = retargetTimespan + (nModulatedTimespan - retargetTimespan)/8;
+        nModulatedTimespan = retargetTimespan + (nModulatedTimespan - retargetTimespan)/4;
 
         if (nModulatedTimespan < (retargetTimespan - (retargetTimespan/4))) {
           nModulatedTimespan = (retargetTimespan - (retargetTimespan/4));
         }
-        if (nModulatedTimespan > (retargetTimespan + (retargetTimespan/2))) {
-            nModulatedTimespan = (retargetTimespan + (retargetTimespan/2));
+        if (nModulatedTimespan > (retargetTimespan + (retargetTimespan/4))) {
+            nModulatedTimespan = (retargetTimespan + (retargetTimespan/4));
         }
 
     } else {
-      int32_t timespan = (int32_t)((int64_t)self.timestamp - (int64_t)time);
-      if (nHeight > 10000) {
+        int32_t timespan = (int32_t)(5*24*60*60);//(int32_t)((int64_t)self.timestamp - (int64_t)time);
         if (nModulatedTimespan < timespan/4) nModulatedTimespan = timespan/4;
         if (nModulatedTimespan > timespan*4) nModulatedTimespan = timespan*4;
-      } else if (nHeight > 5000) {
-        if (nModulatedTimespan < timespan/8) nModulatedTimespan = timespan/8;
-        if (nModulatedTimespan > timespan*4) nModulatedTimespan = timespan*4;
-      } else {
-        if (nModulatedTimespan < timespan/16) nModulatedTimespan = timespan/16;
-        if (nModulatedTimespan > timespan*4) nModulatedTimespan = timespan*4;
-      }
     }
 
     BN_CTX *ctx = BN_CTX_new();
@@ -380,14 +375,24 @@ parentBlock:(NSData*)parentBlock
     BN_init(&target);
     setCompact(&target, previous.target);
     setCompact(maxTarget, MAX_PROOF_OF_WORK);
+    NSLog(@"Before limiting to max proof we have target %x", getCompact(&target));
+    
     BN_set_word(span, nModulatedTimespan);
     BN_set_word(targetSpan, retargetTimespan);
     BN_mul(bn, &target, span, ctx);
     BN_div(&target, NULL, bn, targetSpan, ctx);
-    if (BN_cmp(&target, maxTarget) > 0) BN_copy(&target, maxTarget); // limit to MAX_PROOF_OF_WORK
+    if (BN_cmp(&target, maxTarget) > 0)
+    {
+        NSLog(@"If this is reducing the newly calculated target %x down to proof of work then that would be kind of a problem.", getCompact(&target));
+        BN_copy(&target, maxTarget); // limit to MAX_PROOF_OF_WORK
+        NSLog(@"Is it? %x ", getCompact(&target));
+    }
     BN_CTX_end(ctx);
     BN_CTX_free(ctx);
     
+    NSLog(@"Is _target the same as getCompact of &target??? %d", (_target == getCompact(&target)));
+    NSLog(@"_target : %x ", _target);
+    NSLog(@"&target : %x", getCompact(&target));
     return (_target == getCompact(&target)) ? YES : NO;
 }
 

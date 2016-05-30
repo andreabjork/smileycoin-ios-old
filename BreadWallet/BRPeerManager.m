@@ -83,7 +83,7 @@ static const char *dns_seeds[] = {
 #define GENESIS_BLOCK [[BRMerkleBlock alloc] initWithBlockHash:GENESIS_BLOCK_HASH version:1\
     prevBlock:@"0000000000000000000000000000000000000000000000000000000000000000".hexToData\
     merkleRoot:@"e9441ec39c399c76ea734ea31827e1895a82c5a1f9b2c6252b5dacada768ec8b".hexToData\
-    timestamp:1408974288.0 - NSTimeIntervalSince1970 target:0x1e0ffff0L nonce:386703170u totalTransactions:1\
+    timestamp:1408974288 - NSTimeIntervalSince1970 target:0x1e0ffff0 nonce:386703170u totalTransactions:1\
     hashes:@"e9441ec39c399c76ea734ea31827e1895a82c5a1f9b2c6252b5dacada768ec8b".hexToData flags:@"00".hexToData height:0\
     parentBlock:nil]
 
@@ -91,9 +91,9 @@ static const char *dns_seeds[] = {
 // difficulty transition boundaries in order to verify the block difficulty at the immediately following transition
 static const struct { uint32_t height; char *hash; time_t timestamp; uint32_t target; } checkpoint_array[] = {
     {      0, "660f734cf6c6d16111bde201bbd2122873f2f2c078b969779b9d4c99732354fd", 1408974288, 0x1e0ffff0 },
-    {  2000, "6c75adede20c70a18ad60bd5f2184f9154edcf94db01514ff9d2d57699d7cbc6", 1416034119, 0x1e0ffff0 },
-    {  4000, "2bf98d7022a4af00395b3e6d59c979939c5bb368505fe2c47e4552e7aa586424", 1416163884, 0x1e0fffff },
-    {  6000, "e7310e1f05efae70f0265a156fa9d39151349d27f969b6f94f31cfb8a16af95a", 1416395161, 0x1e048bba }
+    //{  2000, "6c75adede20c70a18ad60bd5f2184f9154edcf94db01514ff9d2d57699d7cbc6", 1416034119, 0x1e0ffff0 },
+    //{  4000, "2bf98d7022a4af00395b3e6d59c979939c5bb368505fe2c47e4552e7aa586424", 1416163884, 0x1e0fffff },
+    //{  6000, "e7310e1f05efae70f0265a156fa9d39151349d27f969b6f94f31cfb8a16af95a", 1416395161, 0x1e048bba }
 };
 
 static const char *dns_seeds[] = {
@@ -516,7 +516,7 @@ static const char *dns_seeds[] = {
 // BUG: this just doesn't work very well... we need to start storing tx metadata
 - (NSTimeInterval)timestampForBlockHeight:(uint32_t)blockHeight
 {
-    if (blockHeight == TX_UNCONFIRMED) return [NSDate timeIntervalSinceReferenceDate] + 30; // average confirm time
+    if (blockHeight == TX_UNCONFIRMED) return [NSDate timeIntervalSinceReferenceDate] + 1.5*60; // average confirm time
 
     if (blockHeight > self.lastBlockHeight) { // future block, assume 1 minute per block after last block
         return self.lastBlock.timestamp + (blockHeight - self.lastBlockHeight)*3*60;
@@ -987,9 +987,11 @@ static const char *dns_seeds[] = {
     }
 
     // verify block difficulty
+    NSLog(@"FIRST!!!! TIME checking the difficulty, we have block at height %d with difficulty %x", block.height, block.target);
     if (! [block verifyDifficultyFromPreviousBlock:prev andTransitionTime:transitionTime andStoredBlocks:self.blocks]) {
         NSLog(@"%@:%d relayed block with invalid difficulty target %x, blockHash: %@", peer.host, peer.port,
               block.target, block.blockHash);
+        NSLog(@"This is the block height %d", block.height);
         [self peerMisbehavin:peer];
         return;
     }

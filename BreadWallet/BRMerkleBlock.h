@@ -25,7 +25,7 @@
 
 #import <Foundation/Foundation.h>
 
-#define BLOCK_DIFFICULTY_INTERVAL 2400      // number of blocks between difficulty target adjustments
+#define BLOCK_DIFFICULTY_INTERVAL 2400     // number of blocks between difficulty target adjustments
 #define BLOCK_UNKOWN_HEIGHT       INT32_MAX
 
 @interface BRMerkleBlock : NSObject
@@ -72,5 +72,7 @@ parentBlock:(NSData*)parentBlock;
 // Verifies the block difficulty target is correct for the block's position in the chain. Transition time may be 0 if
 // height is not a multiple of BLOCK_DIFFICULTY_INTERVAL.
 - (BOOL)verifyDifficultyFromPreviousBlock:(BRMerkleBlock *)previous andTransitionTime:(NSTimeInterval)time andStoredBlocks:(NSMutableDictionary *)blocks;
+
+- (int32_t)getTargetInterval;
 
 @end

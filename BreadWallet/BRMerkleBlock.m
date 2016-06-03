@@ -66,7 +66,8 @@ static uint32_t getCompact(const BIGNUM *bn)
     }
     else compact = BN_get_word(bn) << (3 - size)*8;
 
-    if (compact & 0x00800000) { // if sign is already set, divide the mantissa by 256 and increment the exponent
+    if (compact & 0x00800000) {
+        NSLog(@"Divide by 256, possible loss of precision!!!!!!!!!!");// if sign is already set, divide the mantissa by 256 and increment the exponent
         compact >>= 8;
         size++;
     }
@@ -294,6 +295,20 @@ parentBlock:(NSData*)parentBlock
     return txHashes;
 }
 
+- (int32_t) getTargetInterval {
+    int32_t retargetTimespan = TARGET_TIMESPAN;
+    int32_t retargetInterval = BLOCK_DIFFICULTY_INTERVAL;
+    
+    // Tells us whether we've passed block 97050 and should therefore change the target timespan and interval!
+    bool newDifficultyProtocol = (_height >= DIFF_CHANGE_TARGET);
+    if(newDifficultyProtocol) {
+        retargetTimespan = TARGET_TIMESPAN_NEW;
+        retargetInterval = TARGET_TIMESPAN_NEW / TARGET_SPACING;
+    }
+    
+    return retargetInterval;
+}
+
 // Verifies the block difficulty target is correct for the block's position in the chain. Transition time may be 0 if
 // height is not a multiple of BLOCK_DIFFICULTY_INTERVAL.
 //
@@ -306,95 +321,90 @@ parentBlock:(NSData*)parentBlock
 // intuitively named MAX_PROOF_OF_WORK... since larger values are less difficult.
 - (BOOL)verifyDifficultyFromPreviousBlock:(BRMerkleBlock *)previous andTransitionTime:(NSTimeInterval)time andStoredBlocks:(NSMutableDictionary *)blocks
 {
-
+    
     int32_t retargetTimespan = TARGET_TIMESPAN;
     int32_t retargetInterval = BLOCK_DIFFICULTY_INTERVAL;
-    int32_t nHeight = previous.height + 1;
-
-    bool newDifficultyProtocol = nHeight >= DIFF_CHANGE_TARGET;
-
-    if (newDifficultyProtocol) {
-        retargetInterval = TARGET_TIMESPAN_NEW / TARGET_SPACING;
+    
+    // Tells us whether we've passed block 97050 and should therefore change the target timespan and interval!
+    bool newDifficultyProtocol = (_height >= DIFF_CHANGE_TARGET);
+    if(newDifficultyProtocol) {
         retargetTimespan = TARGET_TIMESPAN_NEW;
+        retargetInterval = TARGET_TIMESPAN_NEW / TARGET_SPACING;
     }
-
-    if (_height != nHeight) return NO;
-
+    
+      //  if(_height == 2400) return YES;
+    NSLog(@"This is the _height %d", _height);
+    NSLog(@"This is the previous.height %d", previous.height);
+    if (! [_prevBlock isEqual:previous.blockHash] || _height != previous.height + 1) return NO;
+    
+    // Temporary fix _height != 2400.... This is so that we can still do the calculation when the cursor block is
+    // at -1 (the block before genesis = nonexistent...) and those calculations still pass because the difficulty
+    // calculated is above MAX difficulty. Needs to be fixed, but how?
+    if ((_height % retargetInterval) == 0 && time == 0 && _height != 2400) {
+        NSLog(@"Time : %f", time);
+        return NO;
+    }
 #if BITCOIN_TESTNET
     //TODO: implement testnet difficulty rule check
     return YES; // don't worry about difficulty on testnet for now
 #endif
+    if ((_height % retargetInterval) != 0) return (_target == previous.target) ? YES : NO;
 
-    // Dogecoin: This fixes an issue where a 51% attack can change difficulty at will.
-    // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
-    int blockstogoback = retargetInterval - 1;
-
-    if ((nHeight+1) != retargetInterval)
-        blockstogoback = retargetInterval;
-
-    BRMerkleBlock *cursor = blocks[self.prevBlock];
-
-    for (int i = 0; cursor && i < blockstogoback; i++) {
-        assert(cursor);
-        cursor = blocks[cursor.prevBlock];
-    }
-
-    if (cursor == nil) return YES; // hit checkpoint
-
-    int32_t nModulatedTimespan = (int32_t)((int64_t)self.timestamp - (int64_t)time);//(int32_t)((int64_t)previous.timestamp - (int64_t)cursor.timestamp);
-    NSLog(@"Cursor of height %d has timestamp %f ", cursor.height, cursor.timestamp);
-    //int32_t timespan = 5*24*60*60;
-    //if (nModulatedTimespan < timespan/4) nModulatedTimespan = timespan/4;
-    //if (nModulatedTimespan > timespan*4) nModulatedTimespan = timespan*4;
-    if (newDifficultyProtocol) {
-        nModulatedTimespan = retargetTimespan + (nModulatedTimespan - retargetTimespan)/4;
-
-        if (nModulatedTimespan < (retargetTimespan - (retargetTimespan/4))) {
-          nModulatedTimespan = (retargetTimespan - (retargetTimespan/4));
-        }
-        if (nModulatedTimespan > (retargetTimespan + (retargetTimespan/4))) {
-            nModulatedTimespan = (retargetTimespan + (retargetTimespan/4));
-        }
-
-    } else {
-        int32_t timespan = (int32_t)(5*24*60*60);//(int32_t)((int64_t)self.timestamp - (int64_t)time);
-        if (nModulatedTimespan < timespan/4) nModulatedTimespan = timespan/4;
-        if (nModulatedTimespan > timespan*4) nModulatedTimespan = timespan*4;
-    }
-
+    NSLog(@"BLOCKDEBUG: STARTING A NEW TRANSITION ................................................ ");
+    NSLog(@"BLOCKDEBUG: We hit a difficulty transition point at height %i", _height);
     BN_CTX *ctx = BN_CTX_new();
-
     BN_CTX_start(ctx);
-
-    BIGNUM target;
-    BIGNUM *maxTarget = BN_CTX_get(ctx);
-    BIGNUM *span = BN_CTX_get(ctx);
-    BIGNUM *targetSpan = BN_CTX_get(ctx);
-    BIGNUM *bn = BN_CTX_get(ctx);
-
+    
+    int32_t timespan = (int32_t)((int64_t)previous.timestamp - (int64_t)time);
+    
+    NSLog(@"BLOCKDEBUG: Timestamp of previous block: %lld", (int64_t)previous.timestamp);
+    NSLog(@"BLOCKDEBUG: Timestamp of last difficulty change transition : %lld", (int64_t)time);
+    NSLog(@"BLOCKDEBUG: Calculated timespan: %i", timespan);
+    
+    BIGNUM target, *maxTarget = BN_CTX_get(ctx), *span = BN_CTX_get(ctx), *targetSpan = BN_CTX_get(ctx),
+    *bn = BN_CTX_get(ctx);
+    // limit difficulty transition to -75% or +400%
+    if (timespan < retargetTimespan/4) timespan = retargetTimespan/4;
+    if (timespan > retargetTimespan*4) timespan = retargetTimespan*4;
+    NSLog(@"BLOCKDEBUG: Timespan after target_Timespan recalculation: %i", timespan);
+    NSLog(@"BLOCKDEBUG: TARGET_TIMESPAN %i", retargetTimespan);
+    NSLog(@"BLOCKDEBUG: Target of previous block (compact): %u", previous.target);
     BN_init(&target);
     setCompact(&target, previous.target);
     setCompact(maxTarget, MAX_PROOF_OF_WORK);
-    NSLog(@"Before limiting to max proof we have target %x", getCompact(&target));
-    
-    BN_set_word(span, nModulatedTimespan);
+    BN_set_word(span, timespan);
     BN_set_word(targetSpan, retargetTimespan);
+    NSLog(@"BLOCKDEBUG: Target of previous block (decodeCompact): %lld", (int64_t)&target);
+    NSLog(@"BLOCKDEBUG: Target of previous block (hex): %x", previous.target);
+    
+    NSLog(@"BLOCKDEBUG: ----------------------- CALCULATING ------------------------ ");
+    
     BN_mul(bn, &target, span, ctx);
     BN_div(&target, NULL, bn, targetSpan, ctx);
-    if (BN_cmp(&target, maxTarget) > 0)
-    {
-        NSLog(@"If this is reducing the newly calculated target %x down to proof of work then that would be kind of a problem.", getCompact(&target));
-        BN_copy(&target, maxTarget); // limit to MAX_PROOF_OF_WORK
-        NSLog(@"Is it? %x ", getCompact(&target));
-    }
+    //char output[1000];
+    //BN_print(output, &target);
+    NSLog(@"BLOCKDEBUG: New target (compact): %u", getCompact(&target));
+    NSLog(@"BLOCKDEBUG: New target (decodeCompact): %lld", (int64_t)&target);
+    NSLog(@"BLOCKDEBUG: New target (hex): %x", getCompact(&target));
+    
+    if (BN_cmp(&target, maxTarget) > 0) BN_copy(&target, maxTarget); // limit to MAX_PROOF_OF_WORK
     BN_CTX_end(ctx);
     BN_CTX_free(ctx);
     
-    NSLog(@"Is _target the same as getCompact of &target??? %d", (_target == getCompact(&target)));
-    NSLog(@"_target : %x ", _target);
-    NSLog(@"&target : %x", getCompact(&target));
+    NSLog(@"BLOCKDEBUG: New target after max_pow check (compact): %u", getCompact(&target));
+    NSLog(@"BLOCKDEBUG: Expected target (compact): %u", _target);
+    
+    NSLog(@"BLOCKDEBUG: ------------------------------------------> Final Comparison!!");
+    
+    NSLog(@"BLOCKDEBUG: &target New Calculated Difficulty (compact): %u", getCompact(&target));
+    NSLog(@"BLOCKDEBUG: &target New Calculated Difficulty (hex): %x", getCompact(&target));
+    NSLog(@"BLOCKDEBUG: _target Received Difficulty (compact): %u ", _target);
+    NSLog(@"BLOCKDEBUG: _target Received Difficulty (hex): %x ", _target);
+    
     return (_target == getCompact(&target)) ? YES : NO;
+    
 }
+
 
 // recursively walks the merkle tree in depth first order, calling leaf(hash, flag) for each stored hash, and
 // branch(left, right) with the result from each branch

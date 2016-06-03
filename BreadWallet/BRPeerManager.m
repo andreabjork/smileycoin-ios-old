@@ -91,7 +91,10 @@ static const char *dns_seeds[] = {
 // difficulty transition boundaries in order to verify the block difficulty at the immediately following transition
 static const struct { uint32_t height; char *hash; time_t timestamp; uint32_t target; } checkpoint_array[] = {
     {      0, "660f734cf6c6d16111bde201bbd2122873f2f2c078b969779b9d4c99732354fd", 1408974288, 0x1e0ffff0 },
-    //{  2000, "6c75adede20c70a18ad60bd5f2184f9154edcf94db01514ff9d2d57699d7cbc6", 1416034119, 0x1e0ffff0 },
+    //{      86400, "ca445abb202964cb477d3303bba6c5c2bb15bdc34a7c1faf7681b1e456723fad", 1435240646, 0x1c10b81b },
+    // {      88500, "71b3ff7545c04f8920451e78b9f1bfdf9c8dd5443624b1ef93b2e35550143bb6", 1431703953, 0x1c10b81b },
+    //{      88801, "c5eae9796d55af8c49e47bfee9ce89296efb023c161a765f0b576d576316dd17", 1435536683, 0x1c42e06c },
+    // {  2000, "6c75adede20c70a18ad60bd5f2184f9154edcf94db01514ff9d2d57699d7cbc6", 1416034119, 0x1e0ffff0 },
     //{  4000, "2bf98d7022a4af00395b3e6d59c979939c5bb368505fe2c47e4552e7aa586424", 1416163884, 0x1e0fffff },
     //{  6000, "e7310e1f05efae70f0265a156fa9d39151349d27f969b6f94f31cfb8a16af95a", 1416395161, 0x1e048bba }
 };
@@ -971,15 +974,18 @@ static const char *dns_seeds[] = {
 
     block.height = prev.height + 1;
 
-    if ((block.height % BLOCK_DIFFICULTY_INTERVAL) == 0) { // hit a difficulty transition, find previous transition time
+    if ((block.height % [block getTargetInterval]) == 0) { // hit a difficulty transition, find previous transition time
         BRMerkleBlock *b = block;
 
-        for (uint32_t i = 0; b && i < BLOCK_DIFFICULTY_INTERVAL; i++) {
+        // ADD = SIGN HERE SO THAT WE GET b UP UNTIL THE BLOCK BEFORE THE PREVIOUS INTERVAL
+        for (uint32_t i = 0; b && i <= [block getTargetInterval]; i++) {
             b = self.blocks[b.prevBlock];
         }
-
-        transitionTime = b.timestamp;
-
+        NSLog(@"BEHOLD!!!! WE HAVE CHOSEN A TRANSITION POINT BLOCK");
+        NSLog(@"It is block with hash %lu at height %d ", (unsigned long)b.hash, b.height);
+        
+        transitionTime = b.timestamp;//1435536643-NSTimeIntervalSince1970;//b.timestamp;
+        
         while (b) { // free up some memory
             b = self.blocks[b.prevBlock];
             if (b) [self.blocks removeObjectForKey:b.blockHash];
